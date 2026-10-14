@@ -8,6 +8,10 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 require_once __DIR__ . '/../config.php';
 
 $user_id = (int)$_SESSION['user_id'];

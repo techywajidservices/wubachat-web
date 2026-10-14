@@ -13,7 +13,9 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = (int)$_SESSION['user_id'];
-session_write_close(); // Session unlock: background polling aur button click ka lag khatam
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 require_once __DIR__ . '/../config.php';
 
