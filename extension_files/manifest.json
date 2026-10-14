@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Wubachat Smart Dispatcher",
+  "version": "1.4",
+  "description": "1-Click WhatsApp Inspection Link Dispatcher",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Wubachat Settings",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "host_permissions": [
+    "*://sage.paramountservices.co.in/*",
+    "*://web.wubachat.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://sage.paramountservices.co.in/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Prevent 403 Forbidden directory browsing and index issues
+Options -Indexes
+
+# Set default charset and security headers
+AddDefaultCharset UTF-8
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Handle PHP execution securely
+<FilesMatch "\.(php|phtml)$">
+    # Ensures PHP execution is allowed on Hostinger
+    SetHandler application/x-httpd-php
+</FilesMatch>
+
+# Protect sensitive configuration files
+<FilesMatch "^\.env|composer\.(json|lock)|package\.(json|lock)|README\.md">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent unauthorized access to sensitive folders
+RewriteRule ^config/ - [F,L]
+RewriteRule ^var/ - [F,L]
+
+# Friendly URL routing rules for Wubachat portal
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
