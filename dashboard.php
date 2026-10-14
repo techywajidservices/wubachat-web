@@ -1691,6 +1691,27 @@ usort($contacts, function($a, $b) {
         let savedContactsList = <?= json_encode($contacts) ?> || [];
         let currentFilter = 'all';
         let cameraStream = null;
+        const safeMediaFallback = <?= json_encode($avatar_placeholder) ?>;
+
+        function getSafeMediaUrl(value) {
+            if (typeof value !== 'string') return '';
+            const mediaUrl = value.trim();
+            if (!mediaUrl || /^(null|undefined)$/i.test(mediaUrl)) return '';
+
+            let pathname;
+            try {
+                pathname = new URL(mediaUrl, window.location.href).pathname.toLowerCase();
+            } catch (e) {
+                return '';
+            }
+
+            if (pathname === '/dashboard.php' || pathname.endsWith('/dashboard.php')) return '';
+            return mediaUrl;
+        }
+
+        function getSafeImageSrc(value) {
+            return getSafeMediaUrl(value) || safeMediaFallback;
+        }
 
         let isSelectMode = false;
         let selectedMessageIds = new Set();
@@ -1967,8 +1988,9 @@ usort($contacts, function($a, $b) {
                     const resolvedBio = (d.bio && String(d.bio).trim() !== '') ? d.bio : 'Hey there! I am using WhatsApp.';
                     document.getElementById('drawer-about-display').innerText = resolvedBio;
                     
-                    if (d.avatar) {
-                        avatarEl.innerHTML = `<img src="${d.avatar}" class="w-full h-full object-cover">`;
+                    const avatarUrl = getSafeMediaUrl(d.avatar);
+                    if (avatarUrl) {
+                        avatarEl.innerHTML = `<img src="${escapeHtml(avatarUrl)}" class="w-full h-full object-cover">`;
                     }
                     
                     const blockBtnText = document.getElementById('drawer-block-text');
@@ -1988,11 +2010,14 @@ usort($contacts, function($a, $b) {
                     document.getElementById('drawer-media-count').innerText = totalMedia;
                     
                     if (totalMedia > 0) {
-                        mediaGrid.innerHTML = d.media.slice(0, 6).map(m => `
-                            <a href="${m.url}" target="_blank" class="aspect-square rounded-xl overflow-hidden bg-black/10 border block">
-                                <img src="${m.url}" class="w-full h-full object-cover">
-                            </a>
-                        `).join('');
+                        mediaGrid.innerHTML = d.media.slice(0, 6).map(m => {
+                            const mediaUrl = getSafeMediaUrl(m && m.url);
+                            return mediaUrl ? `
+                                <a href="${escapeHtml(mediaUrl)}" target="_blank" class="aspect-square rounded-xl overflow-hidden bg-black/10 border block">
+                                    <img src="${escapeHtml(mediaUrl)}" class="w-full h-full object-cover">
+                                </a>
+                            ` : '';
+                        }).join('');
                     } else {
                         mediaGrid.innerHTML = '<span class="text-[11px] text-gray-400 italic col-span-3">No media shared yet.</span>';
                     }
@@ -2393,7 +2418,8 @@ usort($contacts, function($a, $b) {
         function isChatSynced(contact) {
             const serverMax = Number(contact.server_max_id || contact.max_id || 0);
             if (serverMax === 0) return true;
-            const localMax = getLocalMaxId(contact.phone_number);
+            const contactPhone = contact.phone || contact.recipient_phone || contact.phone_number;
+            const localMax = getLocalMaxId(contactPhone);
             return localMax >= serverMax;
         }
 
@@ -3137,7 +3163,7 @@ usort($contacts, function($a, $b) {
                     const albumIds = items.map(x => x.id);
 
                     items.forEach(itm => {
-                        const u = itm.message_text.replace('[Image]:', '').trim();
+                        const u = getSafeImageSrc(itm.message_text.replace('[Image]:', '').trim());
                         currentGalleryImages.push({ id: itm.id, url: u });
                     });
 
@@ -3152,14 +3178,14 @@ usort($contacts, function($a, $b) {
                     const displayItems = items.slice(0, maxShow);
 
                     displayItems.forEach((itm, idx) => {
-                        const u = itm.message_text.replace('[Image]:', '').trim();
+                        const u = getSafeImageSrc(itm.message_text.replace('[Image]:', '').trim());
                         const actualIdx = firstGallIdx + idx;
                         const isLastWithMore = (idx === maxShow - 1 && totalImages > maxShow);
                         const extraCount = totalImages - maxShow;
 
                         imagesHtml += `
                             <div class="relative overflow-hidden rounded-xl bg-black/10 aspect-square cursor-pointer group/img" onclick="openGalleryLightbox(${actualIdx})">
-                                <img src="${u}" class="w-full h-full object-cover hover:scale-105 transition duration-200">
+                                <img src="${escapeHtml(u)}" class="w-full h-full object-cover hover:scale-105 transition duration-200">
                                 ${isLastWithMore ? `
                                     <div class="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center text-white font-extrabold text-base">
                                         +${extraCount + 1}
@@ -3223,12 +3249,12 @@ usort($contacts, function($a, $b) {
                     let content = escapeHtml(rawContent);
 
                     if (rawContent.startsWith('[Image]:')) {
-                        const url = rawContent.replace('[Image]:', '').trim();
+                        const url = getSafeImageSrc(rawContent.replace('[Image]:', '').trim());
                         currentGalleryImages.push({ id: m.id, url: url });
                         const gIdx = currentGalleryImages.length - 1;
                         content = `
                             <div class="relative group/media my-1 rounded-2xl overflow-hidden border border-gray-200/60 bg-black/5 cursor-pointer" onclick="openGalleryLightbox(${gIdx})">
-                                <img src="${url}" class="rounded-xl max-h-56 max-w-xs object-cover hover:opacity-95 transition">
+                                <img src="${escapeHtml(url)}" class="rounded-xl max-h-56 max-w-xs object-cover hover:opacity-95 transition">
                             </div>
                         `;
                     } else if (rawContent.startsWith('[Document]:')) {
@@ -3257,31 +3283,30 @@ usort($contacts, function($a, $b) {
                             </div>
                         `;
                     } else if (rawContent.startsWith('[Audio]:')) {
-                        const url = rawContent.replace('[Audio]:', '').trim();
+                        const url = getSafeMediaUrl(rawContent.replace('[Audio]:', '').trim());
                         content = `
                             <div class="my-1">
                                 <audio controls class="w-56 h-8">
-                                    <source src="${url}" type="audio/mpeg">
-                                    <source src="${url}" type="audio/webm">
+                                    ${url ? `<source src="${escapeHtml(url)}" type="audio/mpeg"><source src="${escapeHtml(url)}" type="audio/webm">` : ''}
                                     Your browser does not support the audio element.
                                 </audio>
                             </div>
                         `;
                     } else if (rawContent.startsWith('[Video]:')) {
-                        const url = rawContent.replace('[Video]:', '').split('\n')[0].trim();
+                        const url = getSafeMediaUrl(rawContent.replace('[Video]:', '').split('\n')[0].trim());
                         content = `
                             <div class="my-1 rounded-2xl overflow-hidden border border-gray-200/60 bg-black/5">
                                 <video controls class="rounded-xl max-h-56 max-w-xs object-cover w-full">
-                                    <source src="${url}" type="video/mp4">
+                                    ${url ? `<source src="${escapeHtml(url)}" type="video/mp4">` : ''}
                                     Your browser does not support video.
                                 </video>
                             </div>
                         `;
                     } else if (rawContent.startsWith('[Sticker]:')) {
-                        const url = rawContent.replace('[Sticker]:', '').trim();
+                        const url = getSafeImageSrc(rawContent.replace('[Sticker]:', '').trim());
                         content = `
                             <div class="my-1">
-                                <img src="${url}" class="max-h-32 max-w-32 object-contain">
+                                <img src="${escapeHtml(url)}" class="max-h-32 max-w-32 object-contain">
                             </div>
                         `;
                     } else if (rawContent.includes('[Location]:')) {
@@ -3810,8 +3835,9 @@ usort($contacts, function($a, $b) {
         function updateGalleryLightboxView() {
             const cur = currentGalleryImages[currentGalleryIndex];
             if (!cur) return;
-            document.getElementById('gallery-preview-img').src = cur.url;
-            document.getElementById('gallery-download-btn').href = cur.url;
+            const imageUrl = getSafeImageSrc(cur.url);
+            document.getElementById('gallery-preview-img').src = imageUrl;
+            document.getElementById('gallery-download-btn').href = imageUrl;
             document.getElementById('gallery-image-index').innerText = `Image ${currentGalleryIndex + 1} of ${currentGalleryImages.length}`;
         }
 
@@ -4591,9 +4617,8 @@ usort($contacts, function($a, $b) {
             }
         }
 
-        renderDefaultContactsList();
-
         window.addEventListener('DOMContentLoaded', () => {
+    renderDefaultContactsList();
     const savedPhone = localStorage.getItem('wuba_active_phone');
     const savedName = localStorage.getItem('wuba_active_name');
     const savedSaved = localStorage.getItem('wuba_active_saved') === 'true';
