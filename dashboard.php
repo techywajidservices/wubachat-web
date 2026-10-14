@@ -4617,7 +4617,7 @@ usort($contacts, function($a, $b) {
             }
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
+        const initializeDashboard = () => {
     renderDefaultContactsList();
     const savedPhone = localStorage.getItem('wuba_active_phone');
     const savedName = localStorage.getItem('wuba_active_name');
@@ -4641,7 +4641,13 @@ usort($contacts, function($a, $b) {
             selectChat(savedPhone, savedName, savedSaved);
         }, 600);
     }
-});
+};
+
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initializeDashboard, { once: true });
+} else {
+    initializeDashboard();
+}
     </script>
 </body>
 </html>
