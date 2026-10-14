@@ -8,8 +8,8 @@
         let m = t.match(/VEHICLE NO:\s*([A-Z0-9]+)/i);
         if (m) vehicleNo = m[1].trim();
       }
-      if (!claimNo && t.includes('CLAIM NO:')) {
-        let m = t.match(/CLAIM NO:\s*([0-9]+)/i);
+      if (!claimNo) {
+        let m = t.match(/\bCLAIM\s*(?:NO\.?|NUMBER)\s*:?\s*([\w/-]+)/i);
         if (m) claimNo = m[1].trim();
       }
     });
@@ -20,6 +20,17 @@
 
       let placeholder = (inp.placeholder || '').toLowerCase();
       let parentText = (inp.closest('div') ? inp.closest('div').innerText : '').toLowerCase();
+      let claimContext = [
+        inp.name,
+        inp.id,
+        inp.placeholder,
+        inp.getAttribute('aria-label'),
+        inp.closest('label') ? inp.closest('label').innerText : ''
+      ].join(' ').toLowerCase();
+
+      if (!claimNo && /claim\s*(?:no\.?|number)|claimno|claimnumber/i.test(claimContext)) {
+        claimNo = val;
+      }
 
       if (!workshopName && (parentText.includes('contact person') || parentText.includes('workshop name') || placeholder.includes('person') || placeholder.includes('workshop'))) {
         workshopName = val;
