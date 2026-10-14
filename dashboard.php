@@ -38,6 +38,28 @@ try {
     }
 } catch (Exception $e) {}
 
+$user_avatar = trim((string)$user_avatar);
+$avatar_path = parse_url($user_avatar, PHP_URL_PATH);
+$avatar_scheme = parse_url($user_avatar, PHP_URL_SCHEME);
+$avatar_extension = strtolower(pathinfo(is_string($avatar_path) ? $avatar_path : '', PATHINFO_EXTENSION));
+$valid_avatar_extension = in_array($avatar_extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'], true);
+$valid_avatar_location = $avatar_scheme === null
+    ? substr($user_avatar, 0, 2) !== '//'
+    : is_string($avatar_scheme)
+        && in_array(strtolower($avatar_scheme), ['http', 'https'], true)
+        && filter_var($user_avatar, FILTER_VALIDATE_URL) !== false;
+
+if (
+    $user_avatar === ''
+    || stripos($user_avatar, 'dashboard.php') !== false
+    || !$valid_avatar_extension
+    || !$valid_avatar_location
+) {
+    $user_avatar = '';
+}
+
+$avatar_placeholder = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%23d1fae5%22/%3E%3Ccircle cx=%2250%22 cy=%2236%22 r=%2218%22 fill=%22%2300a884%22/%3E%3Cpath d=%22M15 95c2-22 15-34 35-34s33 12 35 34%22 fill=%22%2300a884%22/%3E%3C/svg%3E';
+
 // Fetch registered/active WhatsApp number strictly for this account
 $connected_whatsapp_phone = $user_phone;
 $active_phone_number_id = '';
@@ -490,8 +512,8 @@ usort($contacts, function($a, $b) {
                         <i class="fa-solid fa-gear"></i>
                     </button>
                     <div onclick="openSettingsModal()" class="w-8 h-8 rounded-full bg-[#00a884] text-white font-bold flex items-center justify-center text-xs shadow-sm cursor-pointer hover:ring-2 hover:ring-[#00a884]/50 transition overflow-hidden">
-                        <?php if (!empty($user_avatar)): ?>
-                            <img src="<?= htmlspecialchars($user_avatar) ?>" alt="Avatar" class="w-full h-full object-cover">
+                        <?php if ($user_avatar !== ''): ?>
+                            <img src="<?= htmlspecialchars($user_avatar, ENT_QUOTES, 'UTF-8') ?>" alt="Avatar" class="w-full h-full object-cover">
                         <?php else: ?>
                             <?= strtoupper(substr($display_name, 0, 1)) ?>
                         <?php endif; ?>
@@ -1190,7 +1212,7 @@ usort($contacts, function($a, $b) {
                 <h4 class="text-xs font-black text-gray-800 uppercase">My Profile Details</h4>
                 <div class="flex items-center space-x-3">
                     <div class="relative w-16 h-16 rounded-full bg-emerald-100 text-[#00a884] font-black text-xl flex items-center justify-center overflow-hidden border border-gray-200">
-                        <img id="settings-avatar-preview" src="<?= !empty($user_avatar) ? htmlspecialchars($user_avatar) : 'https://placehold.co/100x100/00a884/ffffff?text=' . strtoupper(substr($display_name, 0, 1)) ?>" class="w-full h-full object-cover">
+                        <img id="settings-avatar-preview" src="<?= htmlspecialchars($user_avatar !== '' ? $user_avatar : $avatar_placeholder, ENT_QUOTES, 'UTF-8') ?>" class="w-full h-full object-cover">
                         <label class="absolute inset-0 bg-black/30 hover:bg-black/50 cursor-pointer flex items-center justify-center text-white transition">
                             <i class="fa-solid fa-camera text-sm"></i>
                             <input type="file" id="settings-profile-file" accept="image/*" onchange="previewSelectedAvatar(this)" class="hidden">
@@ -4568,6 +4590,8 @@ usort($contacts, function($a, $b) {
                 chatBtn.className = "px-3 py-1 text-gray-600 hover:text-gray-900 rounded-lg font-bold transition flex items-center space-x-1";
             }
         }
+
+        renderDefaultContactsList();
 
         window.addEventListener('DOMContentLoaded', () => {
     const savedPhone = localStorage.getItem('wuba_active_phone');
