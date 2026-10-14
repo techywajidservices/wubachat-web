@@ -1629,6 +1629,8 @@ usort($contacts, function($a, $b) {
         let currentSelectedPhone = '';
         let currentIsSaved = false;
         let pollingInterval = null;
+        let isFetchingMessages = false;
+        let isSyncingContacts = false;
         let mediaRecorder = null;
         let audioChunks = [];
         let recordTimerInterval = null;
@@ -2604,7 +2606,6 @@ usort($contacts, function($a, $b) {
                     currentLoadedMessages = JSON.parse(cachedMsgs);
                     renderMessagesStream(currentLoadedMessages, true);
                 } catch(e) {}
-                lastMessagesJSON = '';
                 loadMessages(currentSelectedPhone, false); // Silent background sync
             } else {
                 // Agar number naya hai aur koi message nahi hai, toh bematlab ka spinner mat dikhao
@@ -2904,8 +2905,12 @@ usort($contacts, function($a, $b) {
            LOAD & RENDER PIPELINE WITH CACHE SYNC
            ------------------------------------------------------------- */
         async function loadMessages(phone, autoScroll = true) {
+            if (isFetchingMessages) return;
+            isFetchingMessages = true;
+            let cleanPhone = '';
+
             try {
-                const cleanPhone = phone.replace(/\D/g, '');
+                cleanPhone = phone.replace(/\D/g, '');
                 const last10 = cleanPhone.slice(-10);
 
                 // 1. Pehle local storage se instant purana cache dikhao
@@ -2945,6 +2950,34 @@ usort($contacts, function($a, $b) {
                 currentLoadedMessages = merged;
                 renderMessagesStream(merged, autoScroll);
             } catch(e) {}
+            finally {
+                isFetchingMessages = false;
+                const selectedPhone = currentSelectedPhone.replace(/\D/g, '');
+                if (cleanPhone && selectedPhone && selectedPhone.slice(-10) !== cleanPhone.slice(-10)) {
+                    loadMessages(selectedPhone, false);
+                }
+            }
+        }
+
+        function updateMessageStatusBadges(messagesArray) {
+            const messagesById = new Map(messagesArray.map(message => [String(message.id), message]));
+            document.querySelectorAll('[data-message-status]').forEach(statusElement => {
+                const message = messagesById.get(statusElement.dataset.messageStatus);
+                if (!message || message.direction !== 'outbound') return;
+
+                const status = (message.status || 'sent').toLowerCase();
+                if (statusElement.dataset.status === status) return;
+
+                let icon = '<i class="fa-solid fa-check text-gray-400 ml-1"></i>';
+                if (status === 'delivered') {
+                    icon = '<i class="fa-solid fa-check-double text-gray-400 ml-1"></i>';
+                } else if (status === 'read') {
+                    icon = '<i class="fa-solid fa-check-double text-[#53bdeb] ml-1"></i>';
+                }
+
+                statusElement.dataset.status = status;
+                statusElement.innerHTML = icon;
+            });
         }
 
         function renderMessagesStream(messagesArray, autoScroll = true) {
@@ -2952,6 +2985,42 @@ usort($contacts, function($a, $b) {
             currentGalleryImages = [];
 
             const stream = document.getElementById('messages-stream');
+            const lastMessage = currentLoadedMessages[currentLoadedMessages.length - 1];
+            const renderSignature = JSON.stringify([
+                currentSelectedPhone.slice(-10),
+                isSelectMode,
+                Array.from(selectedMessageIds).map(String).sort(),
+                currentLoadedMessages.length,
+                lastMessage ? String(lastMessage.id) : '',
+                lastMessage ? (lastMessage.created_at || '') : '',
+                currentLoadedMessages.map(message => [
+                    String(message.id),
+                    message.created_at || '',
+                    message.message_text || '',
+                    message.direction || '',
+                    message.wamid || '',
+                    message.reply_to_wamid || '',
+                    message.reaction || ''
+                ])
+            ]);
+
+            if (renderSignature === lastMessagesJSON) {
+                updateMessageStatusBadges(currentLoadedMessages);
+
+                if (targetScrollMatchId) {
+                    const targetEl = document.getElementById(`msg-bubble-${targetScrollMatchId}`);
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetEl.classList.add('message-jump-focus');
+                    }
+                    targetScrollMatchId = null;
+                } else if (autoScroll && currentLoadedMessages.length > 0) {
+                    stream.scrollTop = stream.scrollHeight;
+                }
+                return;
+            }
+            lastMessagesJSON = renderSignature;
+
             if (!currentLoadedMessages || currentLoadedMessages.length === 0) {
                 stream.innerHTML = `<div class="flex justify-center my-4"><span class="bg-white/80 text-gray-500 text-[11px] px-3 py-1 rounded-full shadow-sm">No messages yet.</span></div>`;
                 return;
@@ -3093,7 +3162,7 @@ usort($contacts, function($a, $b) {
                                     </div>
                                     <div class="text-[9px] text-gray-400 text-right mt-1 flex items-center justify-end space-x-0.5">
                                         <span>${lastMsgTime}</span>
-                                        ${isOut ? albumTickIcon : ''}
+                                        ${isOut ? `<span data-message-status="${items[items.length - 1].id}" data-status="${lastMsgStatus}">${albumTickIcon}</span>` : ''}
                                     </div>
                                 </div>
                             </div>
@@ -3232,7 +3301,7 @@ usort($contacts, function($a, $b) {
                                     <div class="msg-content whitespace-pre-wrap leading-relaxed break-words">${content}</div>
                                     <div class="text-[9px] text-gray-400 text-right mt-1 flex items-center justify-end space-x-0.5">
                                         <span>${msgTimeIST}</span>
-                                        ${isOut ? tickIcon : ''}
+                                        ${isOut ? `<span data-message-status="${m.id}" data-status="${(m.status || 'sent').toLowerCase()}">${tickIcon}</span>` : ''}
                                     </div>
                                     ${reactionBadge}
                                 </div>
@@ -3266,6 +3335,9 @@ usort($contacts, function($a, $b) {
 
         // Live Periodic Background Sync for Contacts Drawer
         setInterval(async () => {
+            if (isSyncingContacts) return;
+            isSyncingContacts = true;
+
             try {
                 const res = await fetch('api/chat_actions.php?action=get_contacts_sync');
                 const d = await res.json();
@@ -3293,6 +3365,9 @@ usort($contacts, function($a, $b) {
                     }
                 }
             } catch(e) {}
+            finally {
+                isSyncingContacts = false;
+            }
         }, 8000);
 
         async function triggerDeleteSingleMessage(msgId, isSender) {
