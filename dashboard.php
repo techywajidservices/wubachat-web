@@ -72,10 +72,13 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-if (isset($_SESSION['cached_meta_tier']) && (time() - ($_SESSION['cached_meta_tier_time'] ?? 0)) < 3600) {
-    $meta_max_quota = $_SESSION['cached_meta_tier']['quota'];
-    $meta_tier_label = $_SESSION['cached_meta_tier']['label'];
-    session_write_close();
+$cached_meta_tier = $_SESSION['cached_meta_tier'] ?? null;
+$cached_meta_tier_time = $_SESSION['cached_meta_tier_time'] ?? 0;
+session_write_close();
+
+if (isset($cached_meta_tier) && (time() - $cached_meta_tier_time) < 3600) {
+    $meta_max_quota = $cached_meta_tier['quota'];
+    $meta_tier_label = $cached_meta_tier['label'];
 } else {
     try {
         if ($wp_row && !empty($wp_row['access_token']) && !empty($wp_row['phone_number_id'])) {
@@ -99,12 +102,15 @@ if (isset($_SESSION['cached_meta_tier']) && (time() - ($_SESSION['cached_meta_ti
                 elseif ($tier_raw === '100K') { $meta_max_quota = 100000; }
                 $meta_tier_label = 'Tier ' . $tier_raw . '/day';
 
+                if (session_status() !== PHP_SESSION_ACTIVE) {
+                    session_start();
+                }
                 $_SESSION['cached_meta_tier'] = ['quota' => $meta_max_quota, 'label' => $meta_tier_label];
                 $_SESSION['cached_meta_tier_time'] = time();
+                session_write_close();
             }
         }
     } catch (Exception $e) {}
-    session_write_close();
 }
 
 $today_sent_count = 0;
@@ -112,7 +118,8 @@ try {
     $stmtToday = $pdo->prepare("
         SELECT COUNT(DISTINCT recipient_phone) as total_today 
         FROM messages 
-        WHERE user_id = ? AND direction = 'outbound' AND sent_via = 'whatsapp' AND DATE(created_at) = CURDATE()
+                WHERE user_id = ? AND direction = 'outbound' AND sent_via = 'whatsapp'
+                    AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY
     ");
     $stmtToday->execute([$user_id]);
     $todayRow = $stmtToday->fetch();
@@ -239,20 +246,39 @@ try {
     
 try {
     $stmt_msg_contacts = $pdo->prepare("
-        SELECT id, recipient_phone, message_text AS last_msg, created_at AS last_time, direction,
-               (SELECT COUNT(*) FROM messages WHERE user_id = ? AND (recipient_phone = m.recipient_phone OR RIGHT(recipient_phone, 10) = RIGHT(m.recipient_phone, 10)) AND status = 'unread' AND direction = 'inbound') AS unread_count,
-               (SELECT created_at FROM messages WHERE user_id = ? AND (recipient_phone = m.recipient_phone OR RIGHT(recipient_phone, 10) = RIGHT(m.recipient_phone, 10)) AND direction = 'inbound' ORDER BY id DESC LIMIT 1) AS last_inbound_time
-        FROM messages m
-        WHERE user_id = ? AND id IN (
-            SELECT MAX(id) FROM messages 
-            WHERE user_id = ? 
-              AND recipient_phone IS NOT NULL 
-              AND recipient_phone != '' 
-            GROUP BY recipient_phone
-        )
-        ORDER BY id DESC
+        SELECT latest.id, latest.recipient_phone, latest.message_text AS last_msg,
+               latest.created_at AS last_time, latest.direction,
+               COALESCE(phone_stats.unread_count, 0) AS unread_count,
+               last_inbound.created_at AS last_inbound_time
+        FROM messages latest
+        INNER JOIN (
+            SELECT user_id, recipient_phone, MAX(id) AS latest_id
+            FROM messages
+            WHERE user_id = ?
+              AND recipient_phone IS NOT NULL
+              AND recipient_phone != ''
+            GROUP BY user_id, recipient_phone
+        ) latest_ids ON latest_ids.latest_id = latest.id
+        LEFT JOIN (
+            SELECT user_id,
+                   RIGHT(recipient_phone, 10) AS phone_suffix,
+                   SUM(CASE WHEN status = 'unread' AND direction = 'inbound' THEN 1 ELSE 0 END) AS unread_count,
+                   MAX(CASE WHEN direction = 'inbound' THEN id END) AS last_inbound_id
+            FROM messages
+            WHERE user_id = ?
+              AND recipient_phone IS NOT NULL
+              AND recipient_phone != ''
+            GROUP BY user_id, RIGHT(recipient_phone, 10)
+        ) phone_stats
+            ON phone_stats.user_id = latest.user_id
+           AND phone_stats.phone_suffix = RIGHT(latest.recipient_phone, 10)
+        LEFT JOIN messages last_inbound
+            ON last_inbound.id = phone_stats.last_inbound_id
+           AND last_inbound.user_id = latest.user_id
+        WHERE latest.user_id = ?
+        ORDER BY latest.id DESC
     ");
-    $stmt_msg_contacts->execute([$user_id, $user_id, $user_id, $user_id]);
+    $stmt_msg_contacts->execute([$user_id, $user_id, $user_id]);
     $raw_msg_senders = $stmt_msg_contacts->fetchAll();
 
     foreach ($raw_msg_senders as $rms) {
