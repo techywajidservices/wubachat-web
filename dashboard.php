@@ -546,7 +546,70 @@ usort($contacts, function($a, $b) {
                 </div>
 
                 <!-- Deep Global Search Bar -->
-                <div class="px-3 pt-2 pb-1.5">
+                <!-- Bulk Delete Controls Added -->
+<div id="bulk-delete-controls-bar" style="padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+    <label style="cursor: pointer; font-weight: bold; color: #374151;"><input type="checkbox" id="select-all-chats" style="margin-right: 6px; accent-color: #00a884;"> Select All Chats</label>
+    <button id="bulk-delete-btn-custom" onclick="deleteSelectedConversations()" style="background: #dc3545; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-weight: bold; cursor: pointer; transition;"><i class="fa-solid fa-trash-can mr-1"></i> Delete Selected</button>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Inject checkboxes into contact items dynamically
+    const observer = new MutationObserver(() => {
+        document.querySelectorAll('.contact-item').forEach(item => {
+            if(!item.querySelector('.chat-select-checkbox')) {
+                // Find phone number from onclick attribute or text
+                let onclickAttr = item.getAttribute('onclick') || '';
+                let match = onclickAttr.match(/selectChat\(['\"]([^'\"]+)['\"]/);
+                if(match && match[1]) {
+                    let phone = match[1];
+                    let cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.className = 'chat-select-checkbox';
+                    cb.style.marginRight = '8px';
+                    cb.style.accentColor = '#00a884';
+                    cb.style.cursor = 'pointer';
+                    cb.setAttribute('data-phone', phone);
+                    
+                    // Stop click propagation so selecting checkbox doesn't open chat
+                    cb.onclick = function(e) { e.stopPropagation(); };
+                    
+                    item.prepend(cb);
+                }
+            }
+        });
+    });
+    observer.observe(document.getElementById('contacts-list-container'), { childList: true, subtree: true });
+});
+
+document.getElementById('select-all-chats').addEventListener('change', function() {
+    let checkboxes = document.querySelectorAll('.chat-select-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+});
+
+function deleteSelectedConversations() {
+    let selectedPhones = [];
+    document.querySelectorAll('.chat-select-checkbox:checked').forEach(cb => {
+        selectedPhones.push(cb.getAttribute('data-phone'));
+    });
+    if(selectedPhones.length === 0) {
+        alert('Please select at least one chat to delete.');
+        return;
+    }
+    if(confirm('Are you sure you want to delete ' + selectedPhones.length + ' selected conversation(s)?')) {
+        fetch('api/delete_chat.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_ids: selectedPhones })
+        }).then(res => res.json()).then(data => {
+            location.reload();
+        }).catch(err => {
+            console.error(err);
+            location.reload();
+        });
+    }
+}
+</script>
+<div class="px-3 pt-2 pb-1.5">
                     <div class="relative flex items-center">
                         <i class="fa-solid fa-search absolute left-3 text-gray-400 text-xs"></i>
                         <input type="text" id="contact-search" oninput="handleUniversalSearch()" placeholder="Search contacts, numbers or words..." class="w-full pl-8 pr-7 py-1.5 bg-[#f0f2f5] border-0 rounded-xl text-xs focus:bg-white focus:ring-1 focus:ring-[#00a884] focus:outline-none transition">
@@ -5428,5 +5491,6 @@ if (document.readyState === 'loading') {
     </script>
 </body>
 </html>
+
 
 
