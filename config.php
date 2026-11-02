@@ -7,9 +7,9 @@ date_default_timezone_set('Asia/Kolkata');
 
 // Database Configuration
 define('DB_HOST', 'localhost');
-define('DB_USER', 'u670020116_wubachat_user');
+define('DB_USER', 'u670020116_web_wubachat');
 define('DB_PASS', 'Wubachat@696095');
-define('DB_NAME', 'u670020116_wubachat_db');
+define('DB_NAME', 'u670020116_web_wubachat');
 
 // Admin Notification Email Configuration
 define('ADMIN_NOTIFICATION_EMAIL', 'support@wubachat.com');
