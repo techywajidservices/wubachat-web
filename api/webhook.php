@@ -295,3 +295,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 ?>
+// Auto-added Webhook Parser Fix for OTP and Messages
+$message_text = "";
+if (isset($incoming_message['text']['body'])) {
+    $message_text = $incoming_message['text']['body'];
+} elseif (isset($incoming_message['interactive'])) {
+    $message_text = $incoming_message['interactive']['button_reply']['title'] ?? '[Interactive Response]';
+} elseif (isset($incoming_message['button'])) {
+    $message_text = $incoming_message['button']['text'] ?? '[Button Click]';
+} else {
+    $message_text = "?? [Incoming WhatsApp Message / Notification]";
+}
